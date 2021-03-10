@@ -1,0 +1,231 @@
+---
+title: "STA314 Assignment 1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+
+```{r, warning = FALSE, message = FALSE}
+#install.packages("imager")
+library(imager)
+library(tidyverse)
+library(tidymodels)
+library(sp)
+library(scales)
+library(cowplot)
+#devtools::install_github("sharlagelfand/dmc")
+library(dmc)
+```
+
+
+
+```{r, warning = FALSE}
+
+set.seed(100)
+
+#FUNCTION 1: CLUSTER_INFO
+
+  # • Input:
+  #      – image_file_name - a PNG or JPEG image.
+  #       – out - the number of centres in the clustering
+  # • Output:
+  #       – cluster_info: A list or tibble of information derived from the k_means that will be sufficient
+  #         to be the input to any other function you write. This should be the only function that
+  #         computes a clustering. This should include at least:
+  #        ∗ the original output of the kclust calls,
+  #     ∗ the tidied clusters, their associated RGB values and their nearest DMC thread colour information.
+  
+  
+cluster_info <- 
+  process_image <- function(image_file_name, k_list) {
+    
+  im <- imager::load.image(image_file_name)
+    
+  tidy_dat <- as.data.frame(im, wide = "c") %>% 
+    rename(R = c.1, G = c.2, B = c.3)
+    
+  dat <- select(tidy_dat, c(-x,-y))
+    
+  kclusts <- 
+    tibble(k_list) %>%
+    mutate(
+      kclust = map(k_list, ~kmeans(x = dat , centers = .x, nstart=4)),
+      glanced = map(kclust, glance),
+      centres = map(kclust, tidy)
+      )
+
+  
+  index = 0 
+  for (i in kclusts$centres) {
+    index = index + 1
+    i$col = rgb(i$R, i$G, i$B)
+    i$dmc = map(i$col, ~dmc(.x))
+    kclusts$centres[[index]] = i 
+  }
+    
+    clusterinfo <- as.data.frame(kclusts) 
+    cluster_info <- list(clusterinfo, tidy_dat)
+    
+    return(cluster_info)
+  
+}
+
+cluster_info = process_image("~/Desktop/marge.jpeg", c(2, 4, 6, 10))
+
+
+```
+
+
+```{r, warning = FALSE}
+
+#FUNCTION 2: SCREE PLOT
+
+scree_plot <- function(cluster_info) {
+  clusterings <- 
+    cluster_info[[1]] %>%
+    unnest(cols = c(glanced))
+  
+  ggplot(clusterings, aes(k_list, tot.withinss)) + xlab("K (number of clusters)") + 
+    ylab("Total within-cluster sum of squares") + ggtitle("K-means Scree Plot") + geom_line() +
+    geom_point() + theme(plot.title = element_text(hjust = 0.5))
+  
+}
+
+scree_plot(cluster_info)
+
+```
+
+
+```{r, warning = FALSE}
+
+# FUNCTION 3
+
+colour_strips <- function(cluster_info) {
+  square <- function(x, label_size) { 
+    ggplot()  + 
+      coord_fixed(xlim=c(0,1), ylim = c(0,1)) + theme_void() + 
+      theme(plot.background = element_rect(fill = x)) + 
+      geom_text(aes(0.5,0.5),label = x , size = label_size)
+  }
+
+  hexs <- c()
+  for (i in cluster_info[[1]]$centres) {
+    dmcs <- i$dmc
+    clust = c()
+    for (j in dmcs) {
+      clust <- append(clust, j$hex)
+      clusts <- list(clust)
+      print(clusts)
+      }
+    hexs <- append(hexs, clusts)
+}
+  
+  for (k in hexs) {
+    t <- tibble(colours = k,
+                squares = purrr::map(colours, ~ square(.x, 24/length(colours))))
+    n_col = length(t$colours)
+    rect_dat <- tibble(x1 = c(0:(n_col-1)), x2 = c(1:n_col), y1 = rep(0,n_col),
+                       y2 =rep(1,n_col), colour = t$colours)
+    strips <- rect_dat %>% ggplot() + coord_fixed() + 
+      geom_rect(aes(xmin=x1, xmax=x2, ymin=y1, ymax=y2, fill=colour), color="black") +
+      geom_text(aes(x=x1+(x2-x1)/2, y=y1+(y2-y1)/2, label=colour), size=20/n_col) + 
+      scale_fill_manual(values = rect_dat$colour)+ theme_void() + theme(legend.position = "none") 
+    print(strips)
+    }
+}
+
+colour_strips(cluster_info)
+
+```
+
+
+```{r, warning = FALSE}
+
+
+## FUNCTION 4: MAKE_PATTERN
+
+make_pattern <- function(cluster_info, k, x_size, black_white = FALSE, background_colour = NULL) {
+  
+  k_list <- cluster_info[[1]]$k_list
+  k_index <- c()
+  
+  for (i in seq_along(1:length(k_list))) {
+    if (k_list[[i]] == k) {
+      k_index = i
+    }
+  }
+  
+  allkclusts <- cluster_info[[1]]$kclust
+  kclust <- allkclusts[[k_index]]
+  
+  tidy_dat <- cluster_info[[2]]
+  tidy_dat <- augment(kclust, tidy_dat) %>% rename(cluster = .cluster)
+  
+  low_res <- change_resolution(tidy_dat, x_size)
+  
+  hex <- hexs[[k_index]]
+  
+  numclusts <- c(1:k)
+  
+  hexnames <- c("Baby Blue - Dark (322)", "Coffee Brown - Ultra Dark (938)", "Terra Cotta - Ultra Very Light (3771)", "Nile Green (954)",  "Lemon - Dark (444)", "Topaz - Ultra Very Dark (780)")
+  
+  backgroundcluster <- c()
+  if (is.null(background_colour) == FALSE) {
+    for (i in seq_along(1:length(hex))) {
+      if (hex[[i]] == background_colour)  {
+        backgroundcluster <- i
+      }
+    }
+    low_res <- subset(low_res, low_res$cluster != backgroundcluster)
+    hexnames <- hexnames[-backgroundcluster]
+    hex <- hex[-backgroundcluster]
+    numclusts<- c(1:(k-1))
+  }
+  
+  plot_frame <- tibble(cluster = factor(numclusts), name = hexnames ,
+                    col = c((hex)))
+
+  p <- ggplot(low_res, aes(x=x, y = y, color = cluster)) + geom_point(aes(col = factor(cluster), shape = factor(cluster))) + 
+    scale_colour_manual(name = "Clusters",
+                        values = plot_frame %>% select(cluster, col) %>% deframe,
+                        label =  plot_frame %>% select(cluster, name) %>% deframe) +  scale_y_reverse() +
+    scale_shape_discrete(name  ="Clusters",
+                           breaks= waiver(),
+                           labels= plot_frame %>% select(cluster, name) %>% deframe,
+                           solid = FALSE) + theme_void() +
+    background_grid(major = c("xy"),
+                      color.major = "black"
+                      )
+  
+  
+  if (black_white == TRUE) {
+    p <- ggplot(low_res, aes(x=x, y = y)) + geom_point(aes(shape = factor(cluster))) + 
+    scale_colour_manual(name = "Clusters",
+                        label =  plot_frame %>% select(cluster, name) %>% deframe) +  scale_y_reverse() +
+    scale_shape_discrete(name  ="Clusters",
+                           breaks= waiver(),
+                           labels= plot_frame %>% select(cluster, name) %>% deframe,
+                           solid = FALSE) + theme_void() + 
+      background_grid(major = c("xy"),
+                      color.major = "black"
+                      )
+
+    
+  }
+  
+  
+  return(p)
+}
+
+make_pattern(cluster_info, 6, 50, black_white = FALSE, background_colour = FALSE)
+
+```
+
+
+

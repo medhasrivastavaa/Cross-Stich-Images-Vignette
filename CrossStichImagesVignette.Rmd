@@ -1,0 +1,78 @@
+---
+title: "Creating a cross-stitch pattern from an image"
+author: "Medha Srivastava"
+date: "November 3, 2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Introduction
+
+This vignette describes the process of creating a cross-stitch pattern version of any PNG/JPEG image, using clustering analysis to simplify the image. The final result is a realistic cross-stitch pattern in a plot that has guiding gridelines and a legend showing the embroidery floss colours associated with the colours in the original image. As images often have many pixels and many colours, even with a simplified image it is possible to have varying results of how many colours and how many threads to use. The process described in this vignette also involves determining the ideal number of threads, i.e. the ideal number of clusters from the image. 
+
+
+## Clustering Stage 
+
+The first stage for creating a cross-stitch pattern from an image is to simplify the image using clustering analysis. This step involves the process_image(image_file_name, k_list) function, which loads the image data and then performs k-means clustering analysis on the tidied image data. Here you would put in the name of your file (with the file path, as shown in the example below) and a list of any k values where k refers to the number of cluster centres. In this case, the k number of clusters represent the k thread colours we will use in the cross-stitch.
+
+Since k-means analysis requires a chosen number of initial cluster centres to perform the clustering with, different values of k can result in wildly different clusters and therefore very different looking patterns/images at the end. Choosing a specific k value is one of the main challenges in k-means clustering. This is why a list of k values is used in this step rather than just a specific k, resulting in k-means data on a variety of different k values. A specific k value for the final cross-stitch pattern is narrowed down later in this process, using the 2nd and 3d stages. The result of running this function is a list containing all the relevant clustering information for the subsequent steps. 
+
+```{r, warning = FALSE, message = FALSE }
+set.seed(100)
+source("functions.R")
+
+cluster_info <- process_image("popart.jpg", c(2, 4, 6, 10))
+
+```
+
+## Making a Scree Plot (choosing the number of clusters)
+
+The next step in the process is producing a scree plot, using the scree_plot(cluster_info) function. The function takes in the k-means analysis data that was collected in the previous step (and stored in cluster_info), and specifically uses the total within-cluster sum of squares values from it to plot against different possible numbers of clusters (i.e. the k_list from the previous stage). Note that again a list of possible k values is used, since the number of clusters has not yet been decided.
+
+This is useful for determining the ideal number of clusters (or number of thread colours). The total within-cluster sum of squares shows the variability of points within the cluster, so better cluster groupings have low variability and therefore a low total within-cluster sum of squares. A higher number of clusters tends to lead to lower variability (since further away points can form separate clusters), but this benefit tends to plateau after a certain number of clusters—after which the variability is low regardless of adding extra clusters. The plateau point is usually the ideal number of clusters, since it allows for the best cluster groupings without adding unnecessary/extra clusters that require extra computations. In this plot, there is a strong decrease until 6 clusters, after which although the variability continues to decrease it is at a very slow rate. Therefore, from this scree plot we would choose 6 to be the chosen number of clusters. Similarly, in any scree plot resulting from this step you could look for the point after which the y-values stop decreasing rapidly. 
+
+Again, the choice of cluster centres significantly effects the clusterings and therefore the appearance final cross-stitch pattern, yet it is a difficult decision that cannot be perfectly pinpointed from just this plot. This chosen number of clusters (6) could still be too high or too low. The next step of this process, producing colour strips, provides a secondary confirmation that the number of clusters chosen is reasonable. 
+
+The scree plot output of this scree_plot(cluster_info) function is a significant part of the cross-stitch pattern creation, since a good choice of the number of clusters will allow for a realistic yet simple cross-stitch imitation of the original image. 
+
+```{r, warning = FALSE, message = FALSE }
+
+scree_plot(cluster_info)
+
+```
+
+
+
+## Producing Colour Strips
+The third step is producing colour strips that show the DMC thread colour closest to each cluster centre colour. This step again still uses a list of different k values, since the goal is to visually determine if the number of colour clusters is reasonable and if the number of clusters chosen in the previous step is inaccurate. This step is done using the colour_strips(cluster_info) function, which takes in the same k-means analysis data produced in the first step (stored in cluster_info), and uses the dmc thread colours associated with the cluster colours in the actual image to produce a colour strip. The colour strip shows all the thread colours that would be used in creating the cross-stitch version of the original image, depending on the number of clusters we choose. 
+
+Here, since the previous step indicated a cluster number of 6 would be ideal, we can see that the colour strip with 6 cluster centres has no repetitive or extra colours and seems to be quite representative of the original image. All the major colours we can see in the original image are shown in this colour strip. The colour strip with 10 colours/clusters looks like it could be a reasonable number of clusters, but visually 2 of the colours seem to be a similar brown colour and 2 yellow colours seem similar as well, indicating that 6 cluster centres is most reasonable for creating a simplified yet representative cross-stitch image. 
+
+```{r, warning = FALSE, message = FALSE }
+
+colour_strips(cluster_info) 
+
+```
+
+
+## Final step: Producing the cross-stitch pattern 
+
+Finally, after determining the ideal number of clusters/threads for the cross-stitch pattern, the original k-means clustering data saved in cluster_info can be used to make the ideal k clusters and produce a pattern. The make_pattern function is needed to plot this pattern fully, using the chosen cluster number (6 in this case), a chosen x_size, and the original k-means data from step 1. This produces a cross-stitch pattern that can be followed, with a legend that has DMC thread colour, and a guide grid. The black_white input allows the pattern to be without colours yet still clustered with the same pattern, and the background_colour input allows background colours to be removed, if there are any in the image.
+
+Part of the make_pattern function lowers the resolution of the original image, since most images have many pixels and would be difficult to simplify to a cross-stitch pattern. The pattern produced from this function shows the DMC colour threads to use with their specific colour name, and has different symbols for the different clusters as well to allow for easily following the pattern even if its black and white. 
+
+We can see with the final cross-stitch image that the chosen number of clusters of 6 was indeed a reasonable choice as the plotted picture looks very similar to the original image, yet is reasonable for cross-stitching purposes. It should be noted that using slightly different cluster centres could have given good cross-stitch patterns too, and the matter of choosing the perfect number of cluster centres is a major difficulty in using k-means clustering. In the final image, some of the colours are not included (such as the specific lip colour or eye colour in this example), so a slightly higher choice of clusters could have produced an image that included those details. 
+
+
+```{r, warning = FALSE, message = FALSE }
+
+make_pattern(cluster_info, 6, 50, black_white = FALSE, background_colour = NULL)
+
+```
+
+
+In general, the overall purpose of producing a cross-stitch pattern from an inputted JPEG/PNG image can be achieved through these 4 steps using the method of k-means clustering to produce a simple, usable version of the original image.
